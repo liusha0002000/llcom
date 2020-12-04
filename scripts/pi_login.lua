@@ -5,38 +5,32 @@ local PASSWORD = "raspiberry" ----这里修改为你的树莓派密码
 
 local UART_MSG_ID = "PI-UART"
 
---串口接收回调
+--等待列表，格式：["等待字符串"] = "收到后要publish的消息"
+local subList = {}
+
+--串口接收回调，分配消息
 uartReceive = function (str)
-    --log.info("uartRec: ",str)
-    sys.publish(UART_MSG_ID,str)--发布消息
+    log.info("uart receive",str)
+    for i,j in pairs(subList) do
+		if str:find(i) then
+			sys.publish(j,str)
+			subList[i] = nil
+		end
+    end
 end
 
+local waitId = 0
 --根据串口接收来发送的函数
 function uartWaitSend(waitString,sendString,timeoutMs)
-	--超时等待
-    local r,str = sys.waitUntil(UART_MSG_ID,timeoutMs)
-    log.info("uartWait: ",r,str)
-    if r then
-    	--字符串匹配
-    	if string.find(str,waitString) then
-    		--发送
-        	local sendResult = apiSendUartData(sendString)
-        	if sendResult then
-        		log.info("uartSend: ",sendString)
-        		return true, str
-        	else
-        		log.info("uartSend failed!!!")
-        	end
-    	end
-    end
-    
-    return false,str
+	waitId = waitId + 1
+	--唯一的消息等待id
+    subList[waitString] = "uartWait"..waitId
+	return sys.waitUntil(subList[waitString],timeoutMs)
 end
 
 --登陆任务
 sys.taskInit(function()
     local r,s = uartWaitSend("login",USERNAME.."\r\n",2000)
     r,s = uartWaitSend("Password",PASSWORD.."\r\n",2000)
-    --r,s = uartWaitSend("密码",PASSWORD.."\r\n",2000)
 end)
 
